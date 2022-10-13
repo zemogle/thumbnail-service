@@ -8,6 +8,14 @@ This project adheres to semantic versioning.
 ### Removed
 
 
+## [3.0.1] - 2022-10-07
+
+### Added
+- AWS_DEFAULT_REGION environment variable
+
+### Changed
+- boto3 connection uses virtual adressing
+
 ## [3.0.0] - 2022-04-11
 
 Initial public release.
