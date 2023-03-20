@@ -51,11 +51,15 @@ def handle_thumbnail_app_exception(error):
     return response
 
 
-def get_response(url, params=None, headers=None):
+def get_response(url, params=None, headers=None, timeout=10):
     response = None
     try:
-        response = requests.get(url, headers=headers, params=params, timeout=10)
+        response = requests.get(url, headers=headers, params=params, timeout=timeout)
         response.raise_for_status()
+    except requests.exceptions.Timeout:
+        message = 'Timeout while accessing resource'
+        payload = {'url': url, 'params': params}
+        raise ThumbnailAppException(message, status_code=504, payload=payload)
     except requests.RequestException:
         status_code = getattr(response, 'status_code', None)
         payload = {}
@@ -105,7 +109,7 @@ def unique_temp_path_start():
 def save_temp_file(frame):
     path = f'{unique_temp_path_start()}{frame["filename"]}'
     with open(path, 'wb') as f:
-        f.write(get_response(frame['url']).content)
+        f.write(get_response(frame['url'], timeout=60).content)
     return path
 
 
@@ -164,7 +168,7 @@ def frames_for_requestnum(request_id, request, reduction_level):
         'Authorization': request.headers.get('Authorization')
     }
     params = {'request_id': request_id, 'reduction_level': reduction_level}
-    return get_response(f'{settings.ARCHIVE_API_URL}frames/', params=params, headers=headers).json()['results']
+    return get_response(f'{settings.ARCHIVE_API_URL}frames/', params=params, headers=headers, timeout=30).json()['results']
 
 
 def rvb_frames(frames):
@@ -277,7 +281,7 @@ def bn_thumbnail(frame_basename):
     headers = {
         'Authorization': request.headers.get('Authorization')
     }
-    params = {'basename': frame_basename}
+    params = {'basename_exact': frame_basename}
     frames = get_response(f'{settings.ARCHIVE_API_URL}frames/', params=params, headers=headers).json()
 
     if not frames['count'] == 1:

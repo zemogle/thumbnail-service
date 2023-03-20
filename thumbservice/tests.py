@@ -358,7 +358,7 @@ def test_archive_query_raised_exception_during_request(thumbservice_client, requ
     frame_id = 13
     requests_mock.get(f'{TEST_API_URL}frames/{frame_id}/', exc=requests.exceptions.ConnectTimeout)
     response = thumbservice_client.get(f'/{frame_id}/')
-    assert response.status_code == 502
+    assert response.status_code == 504
     assert len(list(tmp_path.glob('*'))) == 0
 
 
@@ -367,7 +367,7 @@ def test_frame_basename_does_not_exist(thumbservice_client, requests_mock, tmp_p
         'count': 0,
         'results': []
     }
-    requests_mock.get(f'{TEST_API_URL}frames/?basename=some_frame_that_doesnt_exist', json=empty_results)
+    requests_mock.get(f'{TEST_API_URL}frames/?basename_exact=some_frame_that_doesnt_exist', json=empty_results)
     response = thumbservice_client.get('/some_frame_that_doesnt_exist/')
     assert response.status_code == 404
     assert len(list(tmp_path.glob('*'))) == 0
