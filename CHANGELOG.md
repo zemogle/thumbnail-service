@@ -8,6 +8,11 @@ This project adheres to semantic versioning.
 ### Removed
 
 
+## [3.0.2] - 2023-03-20
+
+### Changed
+- Increased timeout for downloading images and added better timeout error logging
+
 ## [3.0.1] - 2022-10-07
 
 ### Added
