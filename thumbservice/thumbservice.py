@@ -172,19 +172,29 @@ def frames_for_requestnum(request_id, request, reduction_level):
 
 
 def rvb_frames(frames):
-    FILTERS_FOR_COLORS = {
-        'red': ['R', 'rp'],
-        'visual': ['V'],
-        'blue': ['B'],
+    FILTERS = {
+        'red': ['r', 'rp','ip','h-alpha'],
+        'visual': ['v','oiii'],
+        'blue': ['b','gp','sii'],
     }
+    NARROW = ['h-alpha','oiii','sii']
+
     selected_frames = []
+    narrow_check = []
     for color in ['red', 'visual', 'blue']:
         try:
             selected_frames.append(
-                next(f for f in frames if f['primary_optical_element'] in FILTERS_FOR_COLORS[color])
+            next(f for f in frames if f['primary_optical_element'].lower() in FILTERS[color])
             )
         except StopIteration:
             raise ThumbnailAppException('RVB frames not found', status_code=404)
+
+    narrow_check = [f['primary_optical_element'].lower() for f in selected_frames if f['primary_optical_element'].lower() in NARROW]
+    if len(narrow_check) == 3 and (sorted(narrow_check) == NARROW):
+        pass
+    elif len(narrow_check) != 0:
+        raise ThumbnailAppException('Wrong combination of RVB frames', status_code=404)
+    
     return selected_frames
 
 

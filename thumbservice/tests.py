@@ -90,7 +90,82 @@ _test_data = {
                 'reduction_level': 0
             },
         ]
-    }
+    },
+        'narrow_frame' :          
+          {
+                'configuration_type': 'EXPOSE',
+                'filename': 'ogg0m404-kb82-20190321-0273-e91.fits.fz',
+                'id': 11245132,
+                'url': 'http://file_url_1',
+                'proposal_id': 'LCOEPO2018B-002',
+                'request_id': 1756836,
+                'primary_optical_element': 'H-Alpha',
+            },
+       'narrow_request_frames': {
+        'count': 6,
+        'results': [
+            {
+                'configuration_type': 'EXPOSE',
+                'filename': 'ogg0m404-kb82-20190321-0273-e91.fits.fz',
+                'id': 11245132,
+                'url': 'http://file_url_1',
+                'proposal_id': 'LCOEPO2018B-002',
+                'request_id': 1756836,
+                'primary_optical_element': 'H-Alpha',
+                'reduction_level': 91
+            },
+            {
+                'configuration_type': 'EXPOSE',
+                'filename': 'ogg0m404-kb82-20190321-0273-e00.fits.fz',
+                'id': 11245129,
+                'url': 'http://file_url_2',
+                'proposal_id': 'LCOEPO2018B-002',
+                'request_id': 1756836,
+                'primary_optical_element': 'H-Alpha',
+                'reduction_level': 0
+            },
+            {
+                'configuration_type': 'EXPOSE',
+                'filename': 'ogg0m404-kb82-20190321-0272-e91.fits.fz',
+                'id': 11245120,
+                'url': 'http://file_url_3',
+                'proposal_id': 'LCOEPO2018B-002',
+                'request_id': 1756836,
+                'primary_optical_element': 'OIII',
+                'reduction_level': 91
+            },
+            {
+                'configuration_type': 'EXPOSE',
+                'filename': 'ogg0m404-kb82-20190321-0272-e00.fits.fz',
+                'id': 11245119,
+                'url': 'http://file_url_4',
+                'proposal_id': 'LCOEPO2018B-002',
+                'request_id': 1756836,
+                'primary_optical_element': 'OIII',
+                'reduction_level': 0
+            },
+            {
+                'configuration_type': 'EXPOSE',
+                'filename': 'ogg0m404-kb82-20190321-0271-e91.fits.fz',
+                'id': 11245105,
+                'url': 'http://file_url_5',
+                'proposal_id': 'LCOEPO2018B-002',
+                'request_id': 1756836,
+                'primary_optical_element': 'SII',
+                'reduction_level': 91
+            },
+            {
+                'configuration_type': 'EXPOSE',
+                'filename': 'ogg0m404-kb82-20190321-0271-e00.fits.fz',
+                'id': 11245103,
+                'url': 'http://file_url_6',
+                'proposal_id': 'LCOEPO2018B-002',
+                'request_id': 1756836,
+                'primary_optical_element': 'SII',
+                'reduction_level': 0
+            },
+        ]
+       }
 }
 
 
@@ -160,12 +235,12 @@ def thumbservice_client():
     yield thumbservice.app.test_client()
 
 
-@pytest.fixture
+@pytest.fixture()
 def s3_client():
     # This should be passed in to all test functions to mock out calls to aws
     with mock_s3():
         config = boto3.session.Config(signature_version='s3v4')
-        s3 = boto3.client('s3', aws_access_key_id=TEST_ACCESS_KEY, aws_secret_access_key=TEST_SECRET_ACCESS_KEY, config=config)
+        s3 = boto3.client('s3', aws_access_key_id=TEST_ACCESS_KEY, aws_secret_access_key=TEST_SECRET_ACCESS_KEY, config=config,  region_name="us-east-1")
         s3.create_bucket(Bucket=TEST_BUCKET)
         yield s3
 
@@ -204,6 +279,29 @@ def test_generate_black_and_white_thumbnail_successfully(thumbservice_client, re
 def test_generate_color_thumbnail_successfully(thumbservice_client, requests_mock, s3_client, tmp_path):
     frame = deepcopy(_test_data['frame'])
     request_frames = deepcopy(_test_data['request_frames'])
+    requests_mock.get(f'{TEST_API_URL}frames/{frame["id"]}/', json=frame)
+    requests_mock.get(f'{TEST_API_URL}frames/?request_id={frame["request_id"]}&reduction_level=91', json=request_frames)
+    for request_frame in request_frames['results']:
+        requests_mock.get(request_frame['url'], content=b'I Am Image')
+    response1 = thumbservice_client.get(f'/{frame["id"]}/?color=true')
+    call_count_after_1 = requests_mock.call_count
+    response2 = thumbservice_client.get(f'/{frame["id"]}/?color=true')
+    call_count_after_2 = requests_mock.call_count
+    for response in [response1, response2]:
+        response_as_json = response.get_json()
+        assert response_as_json['propid'] == frame['proposal_id']
+        assert 'url' in response_as_json
+        assert response.status_code == 200
+    # The resource will have been created in s3 on the first call, on the second call less work needs to
+    # be done, including only 1 call to requests as opposed to the 5 on initial creation
+    assert call_count_after_1 == 5
+    assert call_count_after_2 == 6
+    # All temp files should have been cleared out
+    assert len(list(tmp_path.glob('*'))) == 0
+
+def test_generate_color_narrowband_thumbnail_successfully(thumbservice_client, requests_mock, s3_client, tmp_path):
+    frame = deepcopy(_test_data['narrow_frame'])
+    request_frames = deepcopy(_test_data['narrow_request_frames'])
     requests_mock.get(f'{TEST_API_URL}frames/{frame["id"]}/', json=frame)
     requests_mock.get(f'{TEST_API_URL}frames/?request_id={frame["request_id"]}&reduction_level=91', json=request_frames)
     for request_frame in request_frames['results']:
@@ -334,6 +432,16 @@ def test_cannot_generate_color_thumbnail_with_incomplete_frame_info(thumbservice
     assert 'Cannot generate thumbnail for given frame' in response.get_json()['message']
     assert len(list(tmp_path.glob('*'))) == 0
 
+def test_all_filters_for_narrow_band_color_thumbnail_not_available(thumbservice_client, requests_mock, s3_client, tmp_path):
+    frame = deepcopy(_test_data['narrow_frame'])
+    request_frames = deepcopy(_test_data['narrow_request_frames'])
+    request_frames['results'][2]['primary_optical_element'] = 'V'
+    requests_mock.get(f'{TEST_API_URL}frames/{frame["id"]}/', json=frame)
+    requests_mock.get(f'{TEST_API_URL}frames/?request_id={frame["request_id"]}&reduction_level=91', json=request_frames)
+    response = thumbservice_client.get(f'/{frame["id"]}/?color=true')
+    assert response.status_code == 404
+    assert b'Wrong combination of RVB frames' in response.data
+    assert len(list(tmp_path.glob('*'))) == 0
 
 def test_frame_not_found(thumbservice_client, requests_mock, tmp_path, s3_client):
     frame_id = 6
