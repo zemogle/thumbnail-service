@@ -7,6 +7,8 @@ import boto3
 import pytest
 import requests
 from moto import mock_s3
+import numpy as np
+from PIL import Image
 
 from thumbservice import common
 from thumbservice import thumbservice
@@ -189,6 +191,22 @@ def mock_fits_to_jpeg():
     m = thumbservice.fits_to_jpg = mock.MagicMock()
     m.side_effect = side_effect
 
+
+@pytest.fixture()
+def mock_planet_image_to_jpg():
+    def side_effect(*args, **kwargs):
+        Path(args[1]).touch()
+    m = thumbservice.planet_image_to_jpg = mock.MagicMock()
+    m.side_effect = side_effect
+
+
+@pytest.fixture()
+def mock_planet_image_data():
+    def side_effect(*args, **kwargs):
+        return np.zeros((9, 9))
+
+    m = common.planet_image_data = mock.MagicMock()
+    m.side_effect = side_effect
 
 def make_tmp_file(tmp_path, filename, suffix):
     path = tmp_path / Path(filename).with_suffix(suffix)
@@ -479,3 +497,102 @@ def test_frame_basename_does_not_exist(thumbservice_client, requests_mock, tmp_p
     response = thumbservice_client.get('/some_frame_that_doesnt_exist/')
     assert response.status_code == 404
     assert len(list(tmp_path.glob('*'))) == 0
+
+def test_planet_color(thumbservice_client, requests_mock, s3_client, tmp_path,mock_planet_image_to_jpg):
+    frame = deepcopy(_test_data['frame'])
+    request_frames = deepcopy(_test_data['request_frames'])
+    requests_mock.get(f'{TEST_API_URL}frames/{frame["id"]}/', json=frame)
+    requests_mock.get(f'{TEST_API_URL}frames/?request_id={frame["request_id"]}&reduction_level=91', json=request_frames)
+    for request_frame in request_frames['results']:
+        requests_mock.get(request_frame['url'], content=b'I Am Image')
+    response1 = thumbservice_client.get(f'/{frame["id"]}/?planet=true&color=true')
+    call_count_after_1 = requests_mock.call_count
+    response2 = thumbservice_client.get(f'/{frame["id"]}/?planet=true&color=true')
+    call_count_after_2 = requests_mock.call_count
+    for response in [response1, response2]:
+        response_as_json = response.get_json()
+        assert response_as_json['propid'] == frame['proposal_id']
+        assert 'url' in response_as_json
+        assert response.status_code == 200
+    # The resource will have been created in s3 on the first call, on the second call less work needs to
+    # be done, including only 1 call to requests as opposed to the 5 on initial creation
+    assert call_count_after_1 == 5
+    assert call_count_after_2 == 6
+    # All temp files should have been cleared out
+    assert len(list(tmp_path.glob('*'))) == 0
+
+def test_planet_black_and_white(thumbservice_client, requests_mock, s3_client, tmp_path, mock_planet_image_to_jpg):
+    frame = deepcopy(_test_data['frame'])
+    requests_mock.get(f'{TEST_API_URL}frames/{frame["id"]}/', json=frame)
+    requests_mock.get(frame['url'], content=b'I Am Image')
+    response1 = thumbservice_client.get(f'/{frame["id"]}/?planet=true')
+    call_count_after_1 = requests_mock.call_count
+    response2 = thumbservice_client.get(f'/{frame["id"]}/?planet=true')
+    call_count_after_2 = requests_mock.call_count
+    for response in [response1, response2]:
+        response_as_json = response.get_json()
+        assert response_as_json['propid'] == frame['proposal_id']
+        assert 'url' in response_as_json
+        assert response.status_code == 200
+    # The resource will have been created in s3 on the first call, on the second call less work needs to
+    # be done, including only 1 call to requests as opposed to the 2 on initial creation
+    assert call_count_after_1 == 2
+    assert call_count_after_2 == 3
+    # All temp files should have been cleared out
+    assert len(list(tmp_path.glob('*'))) == 0
+
+def test_one_filter_for_planet_color_thumbnail_not_available(thumbservice_client, requests_mock, s3_client, tmp_path, mock_planet_image_to_jpg):
+    frame = deepcopy(_test_data['frame'])
+    request_frames = deepcopy(_test_data['request_frames'])
+    request_frames['results'][2]['primary_optical_element'] = 'H-Alpha'
+    requests_mock.get(f'{TEST_API_URL}frames/{frame["id"]}/', json=frame)
+    requests_mock.get(f'{TEST_API_URL}frames/?request_id={frame["request_id"]}&reduction_level=91', json=request_frames)
+    response = thumbservice_client.get(f'/{frame["id"]}/?color=true&planet=true')
+    assert response.status_code == 404
+    assert b'Wrong combination of RVB frames' in response.data
+    assert len(list(tmp_path.glob('*'))) == 0
+
+def test_planet_color_narrow_band(thumbservice_client, requests_mock, s3_client, tmp_path, mock_planet_image_to_jpg):
+    frame = deepcopy(_test_data['narrow_frame'])
+    request_frames = deepcopy(_test_data['narrow_request_frames'])
+    requests_mock.get(f'{TEST_API_URL}frames/{frame["id"]}/', json=frame)
+    requests_mock.get(f'{TEST_API_URL}frames/?request_id={frame["request_id"]}&reduction_level=91', json=request_frames)
+    for request_frame in request_frames['results']:
+        requests_mock.get(request_frame['url'], content=b'I Am Image')
+    response1 = thumbservice_client.get(f'/{frame["id"]}/?planet=true&color=true')
+    call_count_after_1 = requests_mock.call_count
+    response2 = thumbservice_client.get(f'/{frame["id"]}/?planet=true&color=true')
+    call_count_after_2 = requests_mock.call_count
+    for response in [response1, response2]:
+        response_as_json = response.get_json()
+        assert response_as_json['propid'] == frame['proposal_id']
+        assert 'url' in response_as_json
+        assert response.status_code == 200
+    # The resource will have been created in s3 on the first call, on the second call less work needs to
+    # be done, including only 1 call to requests as opposed to the 5 on initial creation
+    assert call_count_after_1 == 5
+    assert call_count_after_2 == 6
+    # All temp files should have been cleared out
+    assert len(list(tmp_path.glob('*'))) == 0
+
+def test_planet_image_to_jpg_3_files(mock_planet_image_data, tmp_path):
+    filenames = ['file1.fits', 'file2.fits', 'file3.fits']
+    common.planet_image_to_jpg(filenames, tmp_path / 'test.jpg')
+
+    imagefiles = list(tmp_path.glob('*'))
+    assert len(imagefiles) == 1
+    assert imagefiles[0].name == 'test.jpg'
+    # Test we have a RGB image
+    img = Image.open(imagefiles[0])
+    assert img.mode == 'RGB'
+
+def test_planet_image_to_jpg_1_file(mock_planet_image_data, tmp_path):
+    filenames = ['file1.fits',]
+    common.planet_image_to_jpg(filenames, tmp_path / 'test.jpg')
+
+    imagefiles = list(tmp_path.glob('*'))
+    assert len(imagefiles) == 1
+    assert imagefiles[0].name == 'test.jpg'
+    # Test we have a greyscale image
+    img = Image.open(imagefiles[0])
+    assert img.mode == 'L'
