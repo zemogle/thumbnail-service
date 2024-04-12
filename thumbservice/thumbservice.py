@@ -124,9 +124,9 @@ def convert_to_jpg(paths, key, **params):
     fits_to_jpg(paths, jpg_path, **params)
     return jpg_path
 
-def convert_to_planet_jpg(paths, key):
+def convert_to_planet_jpg(paths, key, **params):
     jpg_path = f'{unique_temp_path_start()}{key}'
-    planet_image_to_jpg(paths, jpg_path)
+    planet_image_to_jpg(paths, jpg_path, **params)
     return jpg_path
 
 def get_s3_client():
@@ -273,7 +273,7 @@ def generate_thumbnail(frame, request):
         if not params['planet']:
             jpg_path = convert_to_jpg(paths.paths, key, **params)
         else:
-            jpg_path = convert_to_planet_jpg(paths.paths, key)
+            jpg_path = convert_to_planet_jpg(paths.paths, key, **params)
         upload_to_s3(key, jpg_path)
     finally:
         # Cleanup actions

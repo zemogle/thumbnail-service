@@ -31,6 +31,7 @@ def find_planet(data):
     rebinned = rebin(data, binning)
     max_coord = np.unravel_index(np.argmax(rebinned),rebinned.shape)
 
+    # xw, yw = scale_coordinates(max_coord[0], max_coord[1], width, height)
     x1, x2 = binning*max_coord[0]-300, binning*max_coord[0]+300
     y1, y2 = binning*max_coord[1]-300, binning*max_coord[1]+300
     return data[x1:x2,y1:y2]
@@ -73,22 +74,35 @@ def stack_images(images_to_stack):
     rgb_cube = np.dstack(images_to_stack).astype(np.uint8)
     return Image.fromarray(rgb_cube)
 
-def planet_image_to_jpg(filenames, output_path):
+def planet_image_to_jpg(filenames, output_path, **params):
+    '''
+    Create a jpg of planet. If the size is less than 600x600, zoom in on the planet. If not use the full image size.
+    Resize the image to the specified height and width.
+    '''
+    max_size = (params['height'], params['width'])
+    if params['height'] <= 600 and params['width'] <= 600:
+       zoom = True
+    else:
+       zoom = False
     if len(filenames) >= 3:
         stack = []
         for filename in filenames:
             data = planet_image_data(filename=filename, colour=True)
-            stack.append(find_planet(data))
+            if zoom:
+                stack.append(find_planet(data))
+            else:
+                stack.append(data)
+        img = stack_images(stack)
+        img.convert('RGB')
 
-        imgstack = stack_images(stack)
-        imgstack.convert('RGB')
-
-        imgstack.save(output_path)
     elif len(filenames) == 1:
         data = planet_image_data(filenames[0])
-        image = find_planet(data)
-        img = Image.fromarray(image.astype(np.uint8))
-        img.save(output_path)
+        if zoom:
+            data = find_planet(data)
+        img = Image.fromarray(data.astype(np.uint8))
+
+    img.thumbnail(max_size)
+    img.save(output_path)
     return
 
 class Settings:

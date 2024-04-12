@@ -203,7 +203,10 @@ def mock_planet_image_to_jpg():
 @pytest.fixture()
 def mock_planet_image_data():
     def side_effect(*args, **kwargs):
-        return np.zeros((9, 9))
+        data = np.zeros((601, 601))
+        # fake planet
+        data[300, 300] = 255
+        return data
 
     m = common.planet_image_data = mock.MagicMock()
     m.side_effect = side_effect
@@ -577,7 +580,7 @@ def test_planet_color_narrow_band(thumbservice_client, requests_mock, s3_client,
 
 def test_planet_image_to_jpg_3_files(mock_planet_image_data, tmp_path):
     filenames = ['file1.fits', 'file2.fits', 'file3.fits']
-    common.planet_image_to_jpg(filenames, tmp_path / 'test.jpg')
+    common.planet_image_to_jpg(filenames, tmp_path / 'test.jpg', height=601, width=601)
 
     imagefiles = list(tmp_path.glob('*'))
     assert len(imagefiles) == 1
@@ -588,7 +591,7 @@ def test_planet_image_to_jpg_3_files(mock_planet_image_data, tmp_path):
 
 def test_planet_image_to_jpg_1_file(mock_planet_image_data, tmp_path):
     filenames = ['file1.fits',]
-    common.planet_image_to_jpg(filenames, tmp_path / 'test.jpg')
+    common.planet_image_to_jpg(filenames, tmp_path / 'test.jpg', height=601, width=601)
 
     imagefiles = list(tmp_path.glob('*'))
     assert len(imagefiles) == 1
@@ -596,3 +599,25 @@ def test_planet_image_to_jpg_1_file(mock_planet_image_data, tmp_path):
     # Test we have a greyscale image
     img = Image.open(imagefiles[0])
     assert img.mode == 'L'
+
+def test_planet_image_to_jpg_zoom(mock_planet_image_data, tmp_path):
+    filenames = ['file1.fits',]
+    common.planet_image_to_jpg(filenames, tmp_path / 'test.jpg', height=300, width=300)
+
+    imagefiles = list(tmp_path.glob('*'))
+    assert len(imagefiles) == 1
+    assert imagefiles[0].name == 'test.jpg'
+    # Test we have zoomed in image
+    img = Image.open(imagefiles[0])
+    assert img.size == (300, 300)
+
+def test_planet_image_to_jpg_3_files_zoom(mock_planet_image_data, tmp_path):
+    filenames = ['file1.fits', 'file2.fits', 'file3.fits']
+    common.planet_image_to_jpg(filenames, tmp_path / 'test.jpg', height=300, width=300)
+
+    imagefiles = list(tmp_path.glob('*'))
+    assert len(imagefiles) == 1
+    assert imagefiles[0].name == 'test.jpg'
+    # Test we have a RGB image
+    img = Image.open(imagefiles[0])
+    assert img.size == (300, 300)
